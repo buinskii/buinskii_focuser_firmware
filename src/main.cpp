@@ -2,7 +2,9 @@
 #include <SerialCommand.h>
 #include "Arduino.h"
 
-AccelStepper motor(AccelStepper::HALF4WIRE, 10, 11, 13, 12);
+//AccelStepper motor(AccelStepper::HALF4WIRE, 10, 11, 13, 12);
+//AccelStepper motor(AccelStepper::HALF4WIRE, pc3, pc1, pc2, pc0);
+AccelStepper motor(AccelStepper::HALF4WIRE, 17, 15, 16, 14);
 SerialCommand serialCommand;
 
 #define DEVICE_RESPONSE "BAA.Focuser"
@@ -17,7 +19,7 @@ double temperature1 = 36.61;                    // Sensor #1 Temp
 double temperature2 = 36.62;                    // Sensor #2 Temp
 double temperature3 = 36.63;                    // Sensor #3 Temp
 
-unsigned int speed = 800;
+unsigned int speed = 80;
 unsigned int acceleration = 400;
 
 void handshake()
@@ -125,7 +127,7 @@ void setSpeed()
 {
     char *arg = serialCommand.next();
     speed = atoi (arg);
-    motor.setMaxSpeed(speed);
+    motor.setMaxSpeed(speed * 10);
 
     Serial.print("A:SS ");
     Serial.print(speed);
@@ -135,7 +137,7 @@ void setSpeed()
 void getSpeed()
 {
     Serial.print("A:GS:");
-    Serial.print((int) motor.maxSpeed());
+    Serial.print((int) motor.maxSpeed() / 10);
     Serial.print("#\n");
 }
 
@@ -150,7 +152,7 @@ void setup()
 {
     Serial.begin(9600);
 
-    motor.setMaxSpeed(speed);
+    motor.setMaxSpeed(speed * 10);
     motor.setAcceleration(acceleration);
 
     serialCommand.addCommand("T", handshake);
