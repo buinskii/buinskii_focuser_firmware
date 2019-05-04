@@ -1,6 +1,7 @@
 #include <AccelStepper.h>
 #include <SerialCommand.h>
 #include "Arduino.h"
+#include <EEPROM.h>
 
 //AccelStepper motor(AccelStepper::HALF4WIRE, 10, 11, 13, 12);
 //AccelStepper motor(AccelStepper::HALF4WIRE, pc3, pc1, pc2, pc0);
@@ -9,34 +10,29 @@ SerialCommand serialCommand;
 
 #define DEVICE_RESPONSE "BAA.Focuser"
 
-long mov = 0;
-long set_current_pos;
+int position = 0;
 
 bool is_mov	= false;
 bool revers = false;
 
-double temperature1 = 36.61;                    // Sensor #1 Temp
-double temperature2 = 36.62;                    // Sensor #2 Temp
-double temperature3 = 36.63;                    // Sensor #3 Temp
+double temperature1 = 36.61;
+double temperature2 = 36.62;
+double temperature3 = 36.63;
+
+const int DEFAULT_SPEED = 80;
+const int DEFAULT_ACCELERATION = 40;
 
 unsigned int speed = 80;
-unsigned int acceleration = 400;
+unsigned int acceleration = 40;
+
+const int ADDR_SPEED = 0;
+const int ADDR_ACCELERATION = ADDR_SPEED + sizeof(speed);
+const int ADDR_POSITION = ADDR_ACCELERATION + sizeof(acceleration);
 
 void handshake()
 {
     Serial.print("A:T:");
     Serial.print(F(DEVICE_RESPONSE));
-    Serial.print("#\n");
-}
-
-void setAcceleration()
-{
-    char *arg = serialCommand.next();
-    acceleration = atoi (arg);
-    motor.setAcceleration(acceleration);
-
-    Serial.print("A:A ");
-    Serial.print(acceleration);
     Serial.print("#\n");
 }
 
@@ -54,11 +50,13 @@ void setRevers()
 void moveTo()
 {
     char *arg = serialCommand.next();
-    mov = atol(arg);
-    motor.moveTo(mov);
+    position = atoi(arg);
+    motor.moveTo(position);
+
+    EEPROM.put(ADDR_POSITION, position);
 
     Serial.print("A:M ");
-    Serial.print(mov);
+    Serial.print(position);
     Serial.print("#\n");
 }
 
@@ -87,6 +85,9 @@ void halt()
 {
     motor.moveTo(motor.currentPosition());
 
+    position = motor.currentPosition();
+    EEPROM.put(ADDR_POSITION, position);
+
     Serial.print("A:H:");
     Serial.print(motor.currentPosition());
     Serial.print("#\n");
@@ -107,12 +108,14 @@ void isMoving()
 void setPosition()
 {
     char *arg = serialCommand.next();
-    set_current_pos = atol(arg);
-    motor.setCurrentPosition(set_current_pos);
-    motor.moveTo(set_current_pos);
+    position = atoi(arg);
+    motor.setCurrentPosition(position);
+    motor.moveTo(position);
+
+    EEPROM.put(ADDR_POSITION, position);
 
     Serial.print("A:SP ");
-    Serial.print(set_current_pos);
+    Serial.print(position);
     Serial.print("#\n");
 }
 
@@ -123,11 +126,33 @@ void getPosition()
     Serial.print("#\n");
 }
 
+void setAcceleration()
+{
+    char *arg = serialCommand.next();
+    acceleration = atoi (arg);
+    motor.setAcceleration(acceleration * 10);
+
+    EEPROM.put(ADDR_ACCELERATION, acceleration);
+
+    Serial.print("A:SA ");
+    Serial.print(acceleration);
+    Serial.print("#\n");
+}
+
+void getAcceleration()
+{
+    Serial.print("A:GA:");
+    Serial.print(acceleration);
+    Serial.print("#\n");
+}
+
 void setSpeed()
 {
     char *arg = serialCommand.next();
     speed = atoi (arg);
     motor.setMaxSpeed(speed * 10);
+
+    EEPROM.put(ADDR_SPEED, speed);
 
     Serial.print("A:SS ");
     Serial.print(speed);
@@ -137,7 +162,7 @@ void setSpeed()
 void getSpeed()
 {
     Serial.print("A:GS:");
-    Serial.print((int) motor.maxSpeed() / 10);
+    Serial.print(speed);
     Serial.print("#\n");
 }
 
@@ -152,12 +177,28 @@ void setup()
 {
     Serial.begin(9600);
 
+    EEPROM.get(ADDR_SPEED, speed);
+    if (speed <= 0 || speed > 100) {
+        speed = DEFAULT_SPEED;
+    }
+
+    EEPROM.get(ADDR_ACCELERATION, acceleration);
+    if (acceleration <= 0 || acceleration > 100) {
+        acceleration = DEFAULT_ACCELERATION;
+    }
+
+    EEPROM.get(ADDR_POSITION, position);
+    if (position < -30000 || position > 30000) {
+        position = 0;
+    }
+
     motor.setMaxSpeed(speed * 10);
-    motor.setAcceleration(acceleration);
+    motor.setAcceleration(acceleration * 10);
+    motor.setCurrentPosition(position);
+    motor.moveTo(position);
 
     serialCommand.addCommand("T", handshake);
 
-    serialCommand.addCommand("A", setAcceleration);
     serialCommand.addCommand("Z", setRevers);
 
     serialCommand.addCommand("M", moveTo);
@@ -166,6 +207,9 @@ void setup()
     serialCommand.addCommand("T3", getTemperature3);
     serialCommand.addCommand("H", halt);
     serialCommand.addCommand("I", isMoving);
+
+    serialCommand.addCommand("SA", setAcceleration);
+    serialCommand.addCommand("GA", getAcceleration);
 
     serialCommand.addCommand("SS", setSpeed);
     serialCommand.addCommand("GS", getSpeed);
